@@ -19,10 +19,12 @@ CROWSNEST_SERVICE_NAME = "crowsnest.service"
 
 # directories
 CROWSNEST_DIR = Path.home().joinpath("crowsnest")
+CROWSNEST_ENV_DIR = Path.home().joinpath("crowsnest-env")
 
 # files
 CROWSNEST_MULTI_CONFIG = CROWSNEST_DIR.joinpath("tools/.config")
 CROWSNEST_INSTALL_SCRIPT = CROWSNEST_DIR.joinpath("tools/install.sh")
+CROWSNEST_DEPS_JSON_FILE = CROWSNEST_DIR.joinpath("system-dependencies.json")
 CROWSNEST_BIN_FILE = Path("/usr/local/bin/crowsnest")
 CROWSNEST_LOGROTATE_FILE = Path("/etc/logrotate.d/crowsnest")
 CROWSNEST_SERVICE_FILE = SYSTEMD.joinpath(CROWSNEST_SERVICE_NAME)

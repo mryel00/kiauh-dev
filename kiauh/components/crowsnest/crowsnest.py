@@ -16,7 +16,9 @@ from typing import List
 
 from components.crowsnest import (
     CROWSNEST_BIN_FILE,
+    CROWSNEST_DEPS_JSON_FILE,
     CROWSNEST_DIR,
+    CROWSNEST_ENV_DIR,
     CROWSNEST_INSTALL_SCRIPT,
     CROWSNEST_LOGROTATE_FILE,
     CROWSNEST_MULTI_CONFIG,
@@ -25,6 +27,8 @@ from components.crowsnest import (
     CROWSNEST_SERVICE_NAME,
 )
 from components.klipper.klipper import Klipper
+from components.moonraker.utils.sysdeps_parser import SysDepsParser
+from components.moonraker.utils.utils import load_sysdeps_json
 from core.logger import DialogType, Logger
 from core.services.backup_service import BackupService
 from core.settings.kiauh_settings import KiauhSettings
@@ -34,6 +38,7 @@ from utils.common import (
     get_install_status,
 )
 from utils.git_utils import (
+    get_current_branch,
     git_clone_wrapper,
     git_pull_wrapper,
 )
@@ -135,8 +140,7 @@ def update_crowsnest() -> None:
 
             git_pull_wrapper(CROWSNEST_DIR)
 
-            deps = parse_packages_from_file(CROWSNEST_INSTALL_SCRIPT)
-            check_install_dependencies({*deps})
+            install_crowsnest_packages()
 
         cmd_sysctl_service(CROWSNEST_SERVICE_NAME, "restart")
 
@@ -147,12 +151,68 @@ def update_crowsnest() -> None:
 
 
 def get_crowsnest_status() -> ComponentStatus:
-    files = [
-        CROWSNEST_BIN_FILE,
-        CROWSNEST_LOGROTATE_FILE,
-        CROWSNEST_SERVICE_FILE,
-    ]
-    return get_install_status(CROWSNEST_DIR, files=files)
+    """
+    Get the current install status of Crowsnest. Depending on the version the installed
+    files are different. If a version is not yet specified, it will search for a
+    non_existant file resulting in 'Incomplete' status.
+    :return: Installation status
+    """
+    files_dict = {
+        4: [
+            CROWSNEST_BIN_FILE,
+            CROWSNEST_LOGROTATE_FILE,
+            CROWSNEST_SERVICE_FILE,
+        ],
+        5: [CROWSNEST_SERVICE_FILE],
+    }
+    version = get_crowsnest_version()
+
+    non_existant = CROWSNEST_DIR.joinpath("non_existant")
+    files = files_dict.get(version, [non_existant])
+
+    env_dir = None
+    if version >= 5:
+        env_dir = CROWSNEST_ENV_DIR
+    return get_install_status(CROWSNEST_DIR, files=files, env_dir=env_dir)
+
+
+def get_crowsnest_version() -> int:
+    """
+    Get the current major version. Starting with v5 the default branch will be named
+    after the major version.
+    :return: Current major version
+    """
+    version = get_current_branch(CROWSNEST_DIR)
+    if version is None:
+        return 0
+    if version == "master":
+        return 4
+    return int(version.removeprefix("v"))
+
+
+def install_crowsnest_packages() -> None:
+    Logger.print_status("Parsing Crowsnest system dependencies  ...")
+
+    crowsnest_deps = []
+    crowsnest_version = get_crowsnest_version()
+    if crowsnest_version >= 5 and CROWSNEST_DEPS_JSON_FILE.exists():
+        Logger.print_info(
+            f"Parsing system dependencies from {CROWSNEST_DEPS_JSON_FILE.name} ..."
+        )
+        parser = SysDepsParser()
+        sysdeps = load_sysdeps_json(CROWSNEST_DEPS_JSON_FILE)
+        crowsnest_deps.extend(parser.parse_dependencies(sysdeps))
+
+    elif crowsnest_version <= 4 and CROWSNEST_INSTALL_SCRIPT.exists():
+        Logger.print_info(
+            f"Parsing system dependencies from {CROWSNEST_INSTALL_SCRIPT.name} ..."
+        )
+        crowsnest_deps = parse_packages_from_file(CROWSNEST_INSTALL_SCRIPT)
+
+    if not crowsnest_deps:
+        raise ValueError("Error parsing crowsnest dependencies!")
+
+    check_install_dependencies({*crowsnest_deps})
 
 
 def remove_crowsnest() -> None:
